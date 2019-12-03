@@ -1,0 +1,14 @@
+{
+  "name": "xp-document-scanner",
+  "version": "1.0.0",
+  "description": "Experiment with document scanning in the browser",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Mark Eschbach <meschbach@gmail.com>",
+  "license": "MIT",
+  "dependencies": {
+    "http-server": "0.12.0"
+  }
+}

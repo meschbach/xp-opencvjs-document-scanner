@@ -1,0 +1,5 @@
+package-lock.json
+htdocs/examples
+.idea
+node_modules
+htdocs/test.jpg

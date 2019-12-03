@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Recongizer</title>
+    <script src="opencv.js"></script>
+    <script>
+function onReady(){
+	if( !window.cv || !window.cv.Mat ){
+		console.log("Waiting for OpenCV to finish loading...");
+		setTimeout(onReady, 250);
+		return;
+    }
+	console.log("Ready");
+	loadImage("/examples/IMG_20191121_155813.jpg", (img) => {
+		const originalImage = cv.imread(img);
+		try {
+			const ratioChange = 1024 / originalImage.rows ;
+			const resizedImge = new cv.Mat();
+            const dsize = new cv.Size(originalImage.cols * ratioChange, originalImage.rows * ratioChange);
+            cv.resize(originalImage, resizedImge, dsize, 0, 0, cv.INTER_AREA);
+            appendImage(resizedImge);
+
+            //Create grayscale
+            const gray = new cv.Mat();
+			cv.cvtColor(resizedImge, gray, cv.COLOR_RGBA2GRAY, 0);
+			appendImage(gray);
+
+			//Edge detect
+			const edge1 = new cv.Mat();
+			cv.threshold(gray, edge1, 96, 112, cv.THRESH_BINARY);
+			appendImage(edge1);
+            const blur = new cv.Mat();
+			let ksize = new cv.Size(3,3);
+			cv.GaussianBlur(edge1, blur, ksize, 29, 29, cv.BORDER_DEFAULT);
+			appendImage(blur);
+			const edgeMap = new cv.Mat();
+			cv.Canny(blur, edgeMap, 64, 196, 7, false);
+			appendImage(edgeMap);
+
+			//Find contours
+			let contours = new cv.MatVector();
+			let hierarchy = new cv.Mat();
+			cv.findContours(edgeMap, contours, hierarchy, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE);
+			let largest, largestArea;
+			for( let i = 0 ; i < contours.size(); i++ ){
+				const contour = contours.get(i);
+				const area = cv.arcLength(contour, false);
+
+				function update() {
+					let tmp = new cv.Mat();
+					cv.approxPolyDP(contour,tmp, 2, false);
+					largest = tmp;
+					largestArea = area;
+				}
+				if( !largest ){ update() }
+				if( area > largestArea ){ update() }
+			}
+
+			// let rotatedRect = cv.minAreaRect(largest);
+			// let vertices = cv.RotatedRect.points(rotatedRect);
+			let contoursColor = new cv.Scalar(255, 255, 255);
+			// let rectangleColor = new cv.Scalar(255, 0, 0);
+            // // draw rotatedRect
+			// for (let i = 0; i < 4; i++) {
+			// 	cv.line(resizedImge, vertices[i], vertices[(i + 1) % 4], rectangleColor, 2, cv.LINE_AA, 0);
+			// }
+            const largestVector = new cv.MatVector();
+            largestVector.push_back( largest );
+            cv.drawContours(resizedImge, largestVector, -1, contoursColor, 2);
+            appendImage(resizedImge);
+        }finally {
+			originalImage.delete();
+        }
+    });
+}
+
+function appendImage( image ) {
+	const canvas = document.createElement("canvas");
+	canvas.width = 512;
+	canvas.height = 512;
+	document.body.appendChild(canvas);
+	cv.imshow(canvas, image);
+}
+
+function loadImage( url, next ) {
+	const img = new Image();
+	img.onload = (e) => {
+		console.log("Loaded...",e);
+
+		next(img);
+	};
+	img.src = url;
+}
+
+document.addEventListener("DOMContentLoaded",onReady);
+    </script>
+</head>
+<body>
+
+</body>
+</html>
