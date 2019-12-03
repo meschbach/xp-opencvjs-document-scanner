@@ -12,7 +12,7 @@ function onReady(){
 		return;
     }
 	console.log("Ready");
-	loadImage("/examples/IMG_20191121_155813.jpg", (img) => {
+	loadImage("/test.jpg", (img) => {
 		const originalImage = cv.imread(img);
 		try {
 			const ratioChange = 1024 / originalImage.rows ;
