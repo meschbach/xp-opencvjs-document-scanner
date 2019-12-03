@@ -20,7 +20,7 @@ function onReady(){
 		return;
     }
 	console.log("Ready");
-	loadImage("/test-2.jpg", (img) => {
+	loadImage("/test.jpg", (img) => {
 		const startTime = Date.now();
 		const originalImage = time("image read",() => cv.imread(img) );
 		try {
