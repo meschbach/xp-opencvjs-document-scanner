@@ -5,6 +5,14 @@
     <title>Recongizer</title>
     <script src="opencv.js"></script>
     <script>
+function time(name, f ) {
+	const startTime = Date.now();
+    const result = f();
+	const endTime = Date.now();
+	console.log("- " + name + ": Took", (endTime - startTime) + "ms");
+	return result;
+}
+
 function onReady(){
 	if( !window.cv || !window.cv.Mat ){
 		console.log("Waiting for OpenCV to finish loading...");
@@ -12,63 +20,93 @@ function onReady(){
 		return;
     }
 	console.log("Ready");
-	loadImage("/test.jpg", (img) => {
-		const originalImage = cv.imread(img);
+	loadImage("/test-2.jpg", (img) => {
+		const startTime = Date.now();
+		const originalImage = time("image read",() => cv.imread(img) );
 		try {
 			const ratioChange = 1024 / originalImage.rows ;
 			const resizedImge = new cv.Mat();
             const dsize = new cv.Size(originalImage.cols * ratioChange, originalImage.rows * ratioChange);
-            cv.resize(originalImage, resizedImge, dsize, 0, 0, cv.INTER_AREA);
+            time("resize", () => cv.resize(originalImage, resizedImge, dsize, 0, 0, cv.INTER_AREA));
             appendImage(resizedImge);
 
             //Create grayscale
             const gray = new cv.Mat();
-			cv.cvtColor(resizedImge, gray, cv.COLOR_RGBA2GRAY, 0);
+			time("gray scale", () => cv.cvtColor(resizedImge, gray, cv.COLOR_RGBA2GRAY, 0));
 			appendImage(gray);
 
 			//Edge detect
+            const earlyBlur = new cv.Mat();
+			let earlyksize = new cv.Size(11,11);
+			time("earlyBlur", () => cv.GaussianBlur(gray, earlyBlur, earlyksize, 149, 149, cv.BORDER_REPLICATE));
+			appendImage(earlyBlur);
+
 			const edge1 = new cv.Mat();
-			cv.threshold(gray, edge1, 96, 112, cv.THRESH_BINARY);
+			time("threshold", () => cv.threshold(earlyBlur, edge1, 128, 196, cv.THRESH_TOZERO));
 			appendImage(edge1);
+
             const blur = new cv.Mat();
-			let ksize = new cv.Size(3,3);
-			cv.GaussianBlur(edge1, blur, ksize, 29, 29, cv.BORDER_DEFAULT);
+			let ksize = new cv.Size(5,5);
+			time("lateBlur", () => cv.GaussianBlur(edge1, blur, ksize, 29, 29, cv.BORDER_REPLICATE));
 			appendImage(blur);
 			const edgeMap = new cv.Mat();
-			cv.Canny(blur, edgeMap, 64, 196, 7, false);
+			time("Canny", () => cv.Canny(blur, edgeMap, 128, 160, 7, false));
 			appendImage(edgeMap);
 
 			//Find contours
 			let contours = new cv.MatVector();
 			let hierarchy = new cv.Mat();
-			cv.findContours(edgeMap, contours, hierarchy, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE);
-			let largest, largestArea;
+			time("contours", () => cv.findContours(edgeMap, contours, hierarchy, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE));
+
+			const sorting = Date.now();
+			let largest, largestArea, largestContour;
 			for( let i = 0 ; i < contours.size(); i++ ){
 				const contour = contours.get(i);
 				const area = cv.arcLength(contour, false);
 
 				function update() {
+					largestContour = contour;
 					let tmp = new cv.Mat();
-					cv.approxPolyDP(contour,tmp, 2, false);
+					cv.approxPolyDP(contour,tmp, area * .025, true);
 					largest = tmp;
 					largestArea = area;
 				}
 				if( !largest ){ update() }
 				if( area > largestArea ){ update() }
 			}
+			const doneSorting = Date.now();
+			console.log("Sorting took ", doneSorting - sorting, "ms");
 
-			// let rotatedRect = cv.minAreaRect(largest);
-			// let vertices = cv.RotatedRect.points(rotatedRect);
 			let contoursColor = new cv.Scalar(255, 255, 255);
-			// let rectangleColor = new cv.Scalar(255, 0, 0);
-            // // draw rotatedRect
-			// for (let i = 0; i < 4; i++) {
-			// 	cv.line(resizedImge, vertices[i], vertices[(i + 1) % 4], rectangleColor, 2, cv.LINE_AA, 0);
-			// }
             const largestVector = new cv.MatVector();
             largestVector.push_back( largest );
             cv.drawContours(resizedImge, largestVector, -1, contoursColor, 2);
-            appendImage(resizedImge);
+
+            // Bounded Rectangle
+            const boundingRectangle = cv.boundingRect(largestContour);
+			let rectangleColor = new cv.Scalar(255, 255, 255);
+			let point1 = new cv.Point(boundingRectangle.x, boundingRectangle.y);
+			let point2 = new cv.Point(boundingRectangle.x + boundingRectangle.width, boundingRectangle.y + boundingRectangle.height);
+			time("rectangle", () => cv.rectangle(resizedImge, point1, point2, rectangleColor, 2, cv.LINE_AA, 0));
+
+// 			//Rotated Rectangle
+// 			let rotatedRect = cv.minAreaRect(largestContour);
+// 			let vertices = cv.RotatedRect.points(rotatedRect);
+// 			let rotatedRectangleColor = new cv.Scalar(0, 0, 255);
+// // draw rotatedRect
+// 			for (let i = 0; i < 4; i++) {
+// 				cv.line(resizedImge, vertices[i], vertices[(i + 1) % 4], rotatedRectangleColor, 2, cv.LINE_AA, 0);
+// 			}
+
+			appendImage(resizedImge);
+
+			//Cut out document area
+            const onlyDocument = time("roi", () => resizedImge.roi(boundingRectangle));
+            appendImage(onlyDocument);
+
+            //At this point we could try running OCR on it and such
+            const endTime = Date.now();
+            console.log("Took ", (endTime - startTime) + "ms");
         }finally {
 			originalImage.delete();
         }
@@ -76,11 +114,13 @@ function onReady(){
 }
 
 function appendImage( image ) {
-	const canvas = document.createElement("canvas");
-	canvas.width = 512;
-	canvas.height = 512;
-	document.body.appendChild(canvas);
-	cv.imshow(canvas, image);
+	time("appending", () => {
+		const canvas = document.createElement("canvas");
+		canvas.width = 512;
+		canvas.height = 512;
+		document.body.appendChild(canvas);
+		cv.imshow(canvas, image);
+    });
 }
 
 function loadImage( url, next ) {
